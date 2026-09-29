@@ -12,7 +12,7 @@
   @font-face { font-family: 'EcoPretendard'; font-weight: 400; font-style: normal; font-display: block; src: url('fonts/Pretendard-Regular.subset.woff2') format('woff2'); }
   @font-face { font-family: 'EcoPretendard'; font-weight: 700; font-style: normal; font-display: block; src: url('fonts/Pretendard-Bold.subset.woff2') format('woff2'); }
 
-  .eco-wrap { position: relative; box-sizing: border-box; width: 100%; background: #ffffff; overflow: hidden; outline: none;
+  .eco-wrap { position: relative; box-sizing: border-box; width: 100%; max-height: 100vh; max-height: 100dvh; background: #ffffff; overflow: hidden; outline: none;
     font-family: 'EcoPretendard', 'Pretendard', 'Malgun Gothic', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
     -webkit-user-select: none; user-select: none; touch-action: manipulation; line-height: normal; }
     .eco-wrap .eco-viewport { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; }
@@ -202,18 +202,46 @@
   }
   function go(d) { var n = cur + d; if (n >= 0 && n < N) show(n); }
 
-  // ---------- 16:9 비율 맞춤 (콘텐츠 뷰어의 가로폭 기준) ----------
-  function fit() {
-    var W = wrap.clientWidth;
-    if (!(W > 0)) return;
-    var H = W * 9 / 16;
-    viewport.style.height = H + 'px';
-    var s = Math.min(W / 1280, H / 720);
-    frame.style.width = (1280 * s) + 'px';
-    frame.style.height = (720 * s) + 'px';
-    stage.style.transform = 'scale(' + s + ')';
+  // ---------- 16:9 비율 맞춤: 가로·세로 모두 화면 안에 들어가도록(상하 스크롤 없음) ----------
+  function viewH() {
+    var vv = window.visualViewport;
+    return Math.floor(vv && vv.height ? Math.min(vv.height, window.innerHeight || vv.height) : (window.innerHeight || 0));
   }
-  if (window.ResizeObserver) new ResizeObserver(fit).observe(wrap);
+  function applySize(W, H) {
+    var s = Math.min(W / 1280, H / 720);
+    if (!(s > 0)) return;
+    var fw = Math.floor(1280 * s), fh = Math.floor(720 * s);
+    viewport.style.height = fh + 'px';
+    frame.style.width = fw + 'px';
+    frame.style.height = fh + 'px';
+    stage.style.transform = 'scale(' + (fw / 1280) + ')';
+  }
+  var fitting = false;
+  function fit() {
+    if (fitting) return;
+    fitting = true;
+    var W = wrap.clientWidth;
+    if (W > 0) {
+      // 콘텐츠 위쪽 여백(뷰어의 머리글·본문 여백 등)을 뺀 남은 높이 안에 맞춤
+      var top = wrap.getBoundingClientRect().top + (window.pageYOffset || 0);
+      var H = Math.min(W * 9 / 16, Math.max(120, viewH() - top));
+      applySize(W, H);
+      // 아래쪽 여백 때문에 문서가 화면보다 길어지면 그만큼 더 줄임(최대 3회 보정)
+      var root = document.documentElement;
+      for (var i = 0; i < 3; i++) {
+        var over = root.scrollHeight - viewH();
+        if (over <= 0) break;
+        H = Math.max(120, H - over - 1);
+        applySize(W, H);
+      }
+    }
+    fitting = false;
+  }
+  if (window.ResizeObserver) new ResizeObserver(function () { fit(); }).observe(wrap);
+  // 화면(창) 높이가 바뀔 때도 다시 맞춤 – 휴대폰 회전, 주소창 표시/숨김 등
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', function () { setTimeout(fit, 200); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
 
   // ---------- 글자가 상자를 넘치면 겹치지 않도록 글자 크기 자동 축소 ----------
   function fitTexts() {
